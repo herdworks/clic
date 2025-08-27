@@ -63,9 +63,7 @@ func (cli *CLI) Execute() {
 	fmt.Printf("%s version %s\n", cli.Name, cli.Version) // noop, print version information and exit
 }
 
-// =============================================================================
-// Command
-// =============================================================================
+// Command is a single action within the CLI.
 type Command struct {
 	Config      CommandConfig
 	Options     CommandOptions
@@ -86,45 +84,28 @@ func (cmd *Command) ParseEnvironment() {
 }
 
 func (cmd *Command) ParseArguments(args Arguments) (err error) {
-	if args.IsEmpty() {
-		return nil
-	} // guard
+	if args.IsEmpty() { return nil } // guard
 	flags := cmd.Options.FlagSet()
-	err = flags.Parse(args)
-	if err != nil {
-		return err
-	}
-	if len(flags.Args()) == 0 {
-		return nil
-	} // done! (if no remaining arguments)
+	if err = flags.Parse(args); err != nil { return err }
+	if len(flags.Args()) == 0 { return nil }     // done! (if no remaining arguments)
 	cmd.Args = append(cmd.Args, flags.Args()[0]) // argument capture
 	return cmd.ParseArguments(flags.Args()[1:])  // RECURSION!! (parse remaining arguments, if any)
 }
 
 func (cmd *Command) ProcessArguments(args Arguments) (err error) {
-	if cmd.Args.IsEmpty() {
-		return nil
-	} // guard
-	if cmd.Config.Helper == nil {
-		return nil
-	}
+	if cmd.Args.IsEmpty() { return nil } // guard
+	if cmd.Config.Helper == nil { return nil }
 	err = cmd.Config.Helper(cmd)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	return cmd.ParseArguments(args) // reprocess arguments to capture dynamic option values?
 }
 
 func (cmd *Command) Validate() (err error) {
 	for _, option := range cmd.Options {
-		if err := option.Validate(); err != nil {
-			return err
-		}
+		if err := option.Validate(); err != nil { return err }
 	}
 	if cmd.Config.Validator != nil {
-		if err := cmd.Config.Validator(cmd); err != nil {
-			return err
-		}
+		if err := cmd.Config.Validator(cmd); err != nil { return err }
 	}
 	return nil
 }
@@ -142,12 +123,8 @@ func (cmd *Command) Help(err error) {
 }
 
 func (cmds Commands) Usage() (usage string) {
-	if len(cmds) == 0 {
-		return usage
-	}
-	if len(cmds) > 0 {
-		usage += "\nAvailable commands:\n"
-	}
+	if len(cmds) == 0 { return usage }
+	if len(cmds) > 0 { usage += "\nAvailable commands:\n" }
 	longcmd := slices.MaxFunc(cmds, func(a, b *Command) int {
 		return cmp.Compare(len(a.Config.Name), len(b.Config.Name))
 	})
@@ -164,14 +141,10 @@ func (cmd *Command) Usage() (usage string) {
 }
 
 func (cmd Command) ColumnWidth(items ColumnListable, field string, padding int) (width int) {
-	if padding == 0 {
-		padding = 1
-	}
+	if padding == 0 { padding = 1 }
 	values := items.ColumnValues(field)
 	for _, v := range values {
-		if len(v) > width {
-			width = len(v)
-		}
+		if len(v) > width { width = len(v) }
 	}
 	return width + padding
 }
@@ -198,17 +171,9 @@ func (cmd *Command) Execute(args Arguments) {
 
 	// parse environment and arguments
 	cmd.ParseEnvironment()
-	if err := cmd.ParseArguments(args); err != nil {
-		cmd.Help(err)
-	}
-
-	// if err := cmd.ProcessArguments(args); err != nil { cmd.Help(err) }
-	if cmd.Options.Get("help") == "true" {
-		cmd.Help(nil)
-	} // display help if requested
-	if err := cmd.Validate(); err != nil {
-		cmd.Help(err)
-	}
+	if err := cmd.ParseArguments(args); err != nil { cmd.Help(err) }
+	if cmd.Options.Get("help") == "true" { cmd.Help(nil) } // display help if requested
+	if err := cmd.Validate(); err != nil { cmd.Help(err) }
 	if cmd.Config.Handler == nil {
 		cmd.Help(fmt.Errorf("no handler provided for command"))
 	}
@@ -219,9 +184,7 @@ func (cmd *Command) Execute(args Arguments) {
 	os.Exit(0)
 }
 
-// =============================================================================
-// CommandConfig
-// =============================================================================
+// CommandConfig holds Command configuration settings.
 type CommandConfig struct {
 	Name        string
 	Description string
@@ -231,9 +194,7 @@ type CommandConfig struct {
 	Handler     func(cmd *Command) error
 }
 
-// =============================================================================
-// CommandOption
-// =============================================================================
+// CommandOption holds Command options (e.g. flags).
 type CommandOption struct {
 	Name        string
 	ShortName   string
