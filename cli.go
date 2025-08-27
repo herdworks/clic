@@ -85,6 +85,12 @@ func (cmd *Command) ParseEnvironment() {
 
 func (cmd *Command) ParseArguments(args Arguments) (err error) {
 	if args.IsEmpty() { return nil } // guard
+	for {
+		if len(args) == 0 { break }
+		if args[0][0] == byte('-') { break }
+ 		cmd.Args = append(cmd.Args, args[0])
+		args = args[1:]
+	}
 	flags := cmd.Options.FlagSet()
 	if err = flags.Parse(args); err != nil { return err }
 	if len(flags.Args()) == 0 { return nil }     // done! (if no remaining arguments)
