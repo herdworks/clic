@@ -31,6 +31,14 @@ This is not the CLI package you are looking for.
 
 See `clippy.go` for a minimal app that registers a global `--help` flag and runs `Clippy.Execute()`.
 
+## Example
+
+Build the example CLI program (`clippy`) using `go build`:
+
+```shell
+go build -o clippy
+```
+
 ## Roadmap
 
 * Auto generate shell completion scripts
