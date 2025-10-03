@@ -1,12 +1,16 @@
 package cli
 
 import (
+	"bytes"
 	"cmp"
+	"context"
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"slices"
+	"sync"
 )
 
 // CLI is a collection of commands
@@ -50,6 +54,27 @@ func (cli *CLI) Execute() {
 	if len(os.Args) >= 2 {
 		command, err = cli.Commands.Lookup(os.Args[1])
 	}
+	// setup logging option for all commands
+	cli.Options = append(cli.Options, &CommandOption{
+		Name:        "log-level",
+		Description: "Set the logging level (debug, info, warn, error).",
+		Required:    false,
+		Secret:      false,
+		Global:      true,
+		Default:     "info",
+		Handler: func(value string) error {
+			var level slog.Level
+
+			err := level.UnmarshalText([]byte(value))
+			if err != nil {
+				return fmt.Errorf("invalid log level '%s': %w", value, err)
+			}
+			slog.SetDefault(slog.New(NewLogHandler(&slog.HandlerOptions{Level: level})))
+			slog.Debug("Log level set", "level", level)
+			return nil
+		},
+	})
+
 	if command != nil {
 		command.Options = append(command.Options, cli.Options.Globals()...) // add global options
 		command.Execute(os.Args[2:])
@@ -84,34 +109,54 @@ func (cmd *Command) ParseEnvironment() {
 }
 
 func (cmd *Command) ParseArguments(args Arguments) (err error) {
-	if args.IsEmpty() { return nil } // guard
+	if args.IsEmpty() {
+		return nil
+	} // guard
 	for {
-		if len(args) == 0 { break }
-		if args[0][0] == byte('-') { break }
- 		cmd.Args = append(cmd.Args, args[0])
+		if len(args) == 0 {
+			break
+		}
+		if args[0][0] == byte('-') {
+			break
+		}
+		cmd.Args = append(cmd.Args, args[0])
 		args = args[1:]
 	}
 	flags := cmd.Options.FlagSet()
-	if err = flags.Parse(args); err != nil { return err }
-	if len(flags.Args()) == 0 { return nil }     // done! (if no remaining arguments)
+	if err = flags.Parse(args); err != nil {
+		return err
+	}
+	if len(flags.Args()) == 0 {
+		return nil
+	} // done! (if no remaining arguments)
 	cmd.Args = append(cmd.Args, flags.Args()[0]) // argument capture
 	return cmd.ParseArguments(flags.Args()[1:])  // RECURSION!! (parse remaining arguments, if any)
 }
 
 func (cmd *Command) ProcessArguments(args Arguments) (err error) {
-	if cmd.Args.IsEmpty() { return nil } // guard
-	if cmd.Config.Helper == nil { return nil }
+	if cmd.Args.IsEmpty() {
+		return nil
+	} // guard
+	if cmd.Config.Helper == nil {
+		return nil
+	}
 	err = cmd.Config.Helper(cmd)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	return cmd.ParseArguments(args) // reprocess arguments to capture dynamic option values?
 }
 
 func (cmd *Command) Validate() (err error) {
 	for _, option := range cmd.Options {
-		if err := option.Validate(); err != nil { return err }
+		if err := option.Validate(); err != nil {
+			return err
+		}
 	}
 	if cmd.Config.Validator != nil {
-		if err := cmd.Config.Validator(cmd); err != nil { return err }
+		if err := cmd.Config.Validator(cmd); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -129,8 +174,12 @@ func (cmd *Command) Help(err error) {
 }
 
 func (cmds Commands) Usage() (usage string) {
-	if len(cmds) == 0 { return usage }
-	if len(cmds) > 0 { usage += "\nAvailable commands:\n" }
+	if len(cmds) == 0 {
+		return usage
+	}
+	if len(cmds) > 0 {
+		usage += "\nAvailable commands:\n"
+	}
 	longcmd := slices.MaxFunc(cmds, func(a, b *Command) int {
 		return cmp.Compare(len(a.Config.Name), len(b.Config.Name))
 	})
@@ -147,10 +196,14 @@ func (cmd *Command) Usage() (usage string) {
 }
 
 func (cmd Command) ColumnWidth(items ColumnListable, field string, padding int) (width int) {
-	if padding == 0 { padding = 1 }
+	if padding == 0 {
+		padding = 1
+	}
 	values := items.ColumnValues(field)
 	for _, v := range values {
-		if len(v) > width { width = len(v) }
+		if len(v) > width {
+			width = len(v)
+		}
 	}
 	return width + padding
 }
@@ -177,9 +230,15 @@ func (cmd *Command) Execute(args Arguments) {
 
 	// parse environment and arguments
 	cmd.ParseEnvironment()
-	if err := cmd.ParseArguments(args); err != nil { cmd.Help(err) }
-	if cmd.Options.Get("help") == "true" { cmd.Help(nil) } // display help if requested
-	if err := cmd.Validate(); err != nil { cmd.Help(err) }
+	if err := cmd.ParseArguments(args); err != nil {
+		cmd.Help(err)
+	}
+	if cmd.Options.Get("help") == "true" {
+		cmd.Help(nil)
+	} // display help if requested
+	if err := cmd.Validate(); err != nil {
+		cmd.Help(err)
+	}
 	if cmd.Config.Handler == nil {
 		cmd.Help(fmt.Errorf("no handler provided for command"))
 	}
@@ -373,4 +432,51 @@ type ColumnListable interface {
 
 type Comparable interface {
 	ComparedBy(field string) string // return the value to compare
+}
+
+type LogHandler struct {
+	h slog.Handler
+	b *bytes.Buffer
+	m *sync.Mutex
+}
+
+func (h *LogHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.h.Enabled(ctx, level)
+}
+
+func (h *LogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &LogHandler{h: h.h.WithAttrs(attrs), b: h.b, m: h.m}
+}
+
+func (h *LogHandler) WithGroup(name string) slog.Handler {
+	return &LogHandler{h: h.h.WithGroup(name), b: h.b, m: h.m}
+}
+
+func (h *LogHandler) Handle(ctx context.Context, r slog.Record) error {
+	fmt.Printf("%s %s: %s",
+		r.Time.Format("[15:04:05.000]"),
+		r.Level.String(),
+		r.Message,
+	)
+	// Iterate through the record's attributes and print them.
+	r.Attrs(func(attr slog.Attr) bool {
+		fmt.Printf(", %s=%v", attr.Key, attr.Value)
+		return true // continue iteration
+	})
+
+	fmt.Println()
+
+	return nil
+}
+
+func NewLogHandler(opts *slog.HandlerOptions) *LogHandler {
+	if opts == nil {
+		opts = &slog.HandlerOptions{}
+	}
+	b := &bytes.Buffer{}
+	return &LogHandler{
+		b: b,
+		h: slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: opts.Level}),
+		m: &sync.Mutex{},
+	}
 }
