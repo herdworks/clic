@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## Unreleased
 
+## v0.3.0 (2026-08-12)
+
 * **BREAKING:** Replaced the process-coupled mutable command framework with
   composable `CLI`, `Command`, and `Option` trees. Commands and options now
   split host metadata, reusable specifications, and execution-local state.
