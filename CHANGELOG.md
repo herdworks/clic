@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## Unreleased
 
+## v0.3.1 (2026-08-12)
+
 * Added opt-in `-h` / `--help` parsing for commands that provide a `Help`
   callback. Help runs before required-option or command validation and instead
   of the command handler.
