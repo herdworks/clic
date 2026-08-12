@@ -22,6 +22,21 @@ func TestValidateEffectiveOptionCollisions(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsOptionsThatCollideWithImplicitHelp(t *testing.T) {
+	tests := []Option{
+		option("help", "other", "o", false),
+		option("other", "help", "o", false),
+		option("other", "other", "h", false),
+	}
+	for _, option := range tests {
+		cli := commandCLI(Options{option.Spec.Key: &option}, func(*Execution) error { return nil })
+		cli.Spec.Help = DefaultHelp
+		if err := cli.Validate(); err == nil {
+			t.Errorf("Validate() succeeded for option %#v", option)
+		}
+	}
+}
+
 func TestRunRejectsInvalidOptionArguments(t *testing.T) {
 	cli := commandCLI(Options{
 		"value":   {Meta: OptionMeta{Name: "value", ShortName: "v"}, Spec: OptionSpec{Key: "value", Kind: StringOption, Required: true}},

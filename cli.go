@@ -44,7 +44,16 @@ func (cli CLI) Run(execution Execution, args Arguments) Result {
 	if execution.Command.IsNamespace() && len(execution.Command.State.Arguments) != 0 {
 		return WarningResult(fmt.Errorf("unknown command %q", execution.Command.State.Arguments[0]))
 	}
-	if err := resolveOptions(execution.Options, &execution); err != nil {
+	if err := resolveOptionValues(execution.Options, &execution); err != nil {
+		return WarningResult(err)
+	}
+	if help, ok := execution.Options["help"]; ok && help.BoolValue() {
+		if err := execution.Command.Help(&execution); err != nil {
+			return WarningResult(err)
+		}
+		return Result{}
+	}
+	if err := validateRequiredOptions(execution.Options); err != nil {
 		return WarningResult(err)
 	}
 
@@ -108,6 +117,9 @@ func validateTree(command Command, globals []*Option) error {
 	effective := append([]*Option(nil), globals...)
 	for _, option := range command.Spec.Options {
 		effective = append(effective, option)
+	}
+	if command.Spec.Help != nil {
+		effective = append(effective, helpOption())
 	}
 	if err := validateEffectiveOptions(effective, command.Spec.Key); err != nil {
 		return err
@@ -231,6 +243,9 @@ func (cli CLI) resolveCommand(args Arguments) (*Command, Options, Arguments) {
 	for key, option := range selected.Spec.Options {
 		effective[key] = copyOption(option)
 	}
+	if selected.Spec.Help != nil {
+		effective["help"] = helpOption()
+	}
 	return &command, effective, args
 }
 
@@ -248,7 +263,7 @@ func copyOption(option *Option) *Option {
 	return &copy
 }
 
-func resolveOptions(options Options, execution *Execution) error {
+func resolveOptionValues(options Options, execution *Execution) error {
 	for _, option := range options {
 		if option.State.Value == nil {
 			if option.Meta.EnvName != "" && execution.LookupEnv != nil {
@@ -271,6 +286,12 @@ func resolveOptions(options Options, execution *Execution) error {
 				}
 			}
 		}
+	}
+	return nil
+}
+
+func validateRequiredOptions(options Options) error {
+	for _, option := range options {
 		if option.Spec.Required && option.StringValue() == "" {
 			return fmt.Errorf("option --%s is required", option.Meta.Name)
 		}

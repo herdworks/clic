@@ -40,6 +40,21 @@ func DefaultHelp(meta CommandMeta, execution *Execution) error {
 	return err
 }
 
+func helpOption() *Option {
+	return &Option{
+		Meta: OptionMeta{
+			Name:        "help",
+			ShortName:   "h",
+			Description: "Show command help.",
+			Order:       1000,
+		},
+		Spec: OptionSpec{
+			Key:  "help",
+			Kind: BoolOption,
+		},
+	}
+}
+
 func visibleCommands(commands Commands) []*Command {
 	visible := make([]*Command, 0, len(commands))
 	for _, command := range commands.Sorted() {
@@ -90,13 +105,13 @@ func writeOptions(output *strings.Builder, options Options) {
 		}
 	}
 	for _, option := range visible {
-		fmt.Fprintf(output, "\t%-*s %s\n", width, optionFlags(*option), optionDescription(*option))
+		fmt.Fprintf(output, "\t%-*s  %s\n", width, optionFlags(*option), optionDescription(*option))
 	}
 }
 
 func optionFlags(option Option) string {
 	if option.Meta.ShortName == "" {
-		return "--" + option.Meta.Name
+		return "    --" + option.Meta.Name
 	}
 	return "-" + option.Meta.ShortName + ", --" + option.Meta.Name
 }
@@ -109,8 +124,8 @@ func optionDescription(option Option) string {
 	if option.Meta.EnvName != "" {
 		description += " (env: " + option.Meta.EnvName + ")"
 	}
-	if option.Meta.ShowDefault && option.Meta.Default != nil {
-		description += fmt.Sprintf(" (default: %v)", option.Meta.Default)
+	if option.Meta.ShowDefault && option.State.Value != nil && fmt.Sprint(option.State.Value) != "" {
+		description += fmt.Sprintf(" (default: %v)", option.State.Value)
 	}
 	return description
 }

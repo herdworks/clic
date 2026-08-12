@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## Unreleased
 
+* Added opt-in `-h` / `--help` parsing for commands that provide a `Help`
+  callback. Help runs before required-option or command validation and instead
+  of the command handler.
+* Made `DefaultHelp` display non-empty effective option values when
+  `ShowDefault` is enabled, and align long-only option names with short-form
+  options.
+
 ## v0.3.0 (2026-08-12)
 
 * **BREAKING:** Replaced the process-coupled mutable command framework with

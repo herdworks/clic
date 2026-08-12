@@ -267,7 +267,7 @@ func TestDefaultHelp(t *testing.T) {
 		Stdout:  output,
 		Command: command,
 		Options: Options{
-			"config": {Meta: OptionMeta{Name: "config", ShortName: "c", Description: "Configuration.", EnvName: "CONFIG", Default: "site.yaml", ShowDefault: true}, Spec: OptionSpec{Key: "config", Kind: StringOption, Required: true}},
+			"config": {Meta: OptionMeta{Name: "config", ShortName: "c", Description: "Configuration.", EnvName: "CONFIG", Default: "site.yaml", ShowDefault: true}, Spec: OptionSpec{Key: "config", Kind: StringOption, Required: true}, State: OptionState{Value: "site.yaml"}},
 			"hidden": {Meta: OptionMeta{Name: "hidden", Hidden: true}, Spec: OptionSpec{Key: "hidden", Kind: BoolOption}},
 		},
 	}

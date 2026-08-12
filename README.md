@@ -33,6 +33,9 @@ It supplies runtime dependencies; `Run` resolves a command, its effective
 options, and user input before calling its handler or help. It returns a
 [`Result`](./cli.go) without reading process globals or exiting.
 
+Commands that supply `Spec.Help` automatically accept `-h` and `--help`; the
+requested command's help callback runs instead of its validator or handler.
+
 See [`cmd/clippy`](./cmd/clippy) for a small executable example and
 [`hsync/cli`](../hsync/cli) for an importable downstream adapter.
 
