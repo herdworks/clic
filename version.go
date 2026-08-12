@@ -1,4 +1,4 @@
-package clif
+package clic
 
 import (
 	"time"

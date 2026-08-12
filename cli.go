@@ -1,411 +1,290 @@
-// Package clif provides primitives for building command-line interfaces.
-package clif
+// Package clic provides primitives for composing command-line interfaces.
+package clic
 
 import (
-	"cmp"
-	"flag"
 	"fmt"
-	"io"
-	"os"
-	"slices"
+	"strconv"
+	"strings"
 )
 
-// CLI is a collection of commands
+// CLI is a composed command-line interface entrypoint.
 type CLI struct {
-	Name        string
-	Description string
-	Version     string
-	Commands    Commands
-	Options     CommandOptions // global options
-	Args        Arguments
+	Command
+	Version string
 }
 
-func (cli *CLI) Help(err error) {
-	usage := cli.Usage()
-	usage += cli.Commands.Usage()
-	usage += cli.Options.Usage()
-	fmt.Println(usage)
-	if err != nil {
-		fmt.Printf("\nError: %s\n", err)
-		os.Exit(1)
-	}
-	os.Exit(0)
-}
-func (cli *CLI) Usage() (usage string) {
-	usage += fmt.Sprintf("%s\n", cli.Description)
-	usage += "\nUsage:\n"
-	usage += fmt.Sprintf("\t%s", cli.Name)
-	if len(cli.Commands) > 0 {
-		usage += " [command]"
-	}
-	if len(cli.Options) > 0 {
-		usage += " [options]"
-	}
-	usage += "\n\n"
-	return usage
+// Result is the outcome of one CLI run.
+type Result struct {
+	ExitCode int
+	Error    error
 }
 
-func (cli *CLI) Execute() {
+// Validate verifies that a CLI composition has an unambiguous command and option namespace.
+func (cli CLI) Validate() error {
+	if err := validateCommand(cli.Command, "entrypoint"); err != nil {
+		return err
+	}
+	return validateTree(cli.Command, nil)
+}
+
+// Run validates, resolves, parses, and executes one command without process-global side effects.
+func (cli CLI) Run(execution Execution, args Arguments) Result {
 	var err error
-	var command *Command
-	if len(os.Args) >= 2 {
-		command, err = cli.Commands.Lookup(os.Args[1])
-	}
-	if command != nil {
-		command.Options = append(command.Options, cli.Options.Globals()...) // add global options
-		command.Execute(os.Args[2:])
-	}
-	if slices.Contains(os.Args, "-h") || slices.Contains(os.Args, "--help") {
-		cli.Help(nil)
-	}
-	if err != nil {
-		cli.Help(err)
-	}
-	fmt.Printf("%s version %s\n", cli.Name, cli.Version) // noop, print version information and exit
-}
 
-// Command is a single action within the CLI.
-type Command struct {
-	Config      CommandConfig
-	Options     CommandOptions
-	SubCommands Commands
-	Args        Arguments
-}
-type Commands []*Command
+	// does the CLI contain a valid command tree?
+	if err = cli.Validate(); err != nil {
+		return WarningResult(err)
+	}
 
-func (cmd *Command) ParseEnvironment() {
-	for _, option := range cmd.Options {
-		if option.EnvName == "" {
-			continue
-		} // skip options without defined environment variables
-		if value := os.Getenv(option.EnvName); value != "" {
-			option.Default = value
+	// resolve the execution command, options, and arguments
+	execution.Command, execution.Options, args = cli.resolveCommand(args)
+	if execution.Command.State.Arguments, err = parseArguments(&execution, args); err != nil {
+		return WarningResult(err)
+	}
+	if execution.Command.IsNamespace() && len(execution.Command.State.Arguments) != 0 {
+		return WarningResult(fmt.Errorf("unknown command %q", execution.Command.State.Arguments[0]))
+	}
+	if err := resolveOptions(execution.Options, &execution); err != nil {
+		return WarningResult(err)
+	}
+
+	// validate command
+	if execution.Command.Spec.Validator != nil {
+		if err := execution.Command.Spec.Validator(&execution); err != nil {
+			return WarningResult(err)
 		}
 	}
+
+	// generate help output for namespace commands
+	if execution.Command.IsNamespace() {
+		if err := execution.Command.Help(&execution); err != nil {
+			return WarningResult(err)
+		}
+		return Result{}
+	}
+
+	// execute command
+	if execution.Command.Spec.Handler == nil {
+		return WarningResult(fmt.Errorf("command %q has no handler", execution.Command.Meta.Name))
+	} else if err := execution.Command.Spec.Handler(&execution); err != nil {
+		return Result{ExitCode: 2, Error: err}
+	} else {
+		return Result{}
+	}
 }
 
-func (cmd *Command) ParseArguments(args Arguments) (err error) {
-	if args.IsEmpty() {
-		return nil
-	} // guard
-	for {
-		if len(args) == 0 {
+func WarningResult(err error) Result {
+	return Result{
+		ExitCode: 1,
+		Error:    err,
+	}
+}
+
+func validateCommand(command Command, location string) error {
+	if command.Spec.Key == "" {
+		return fmt.Errorf("%s command key is required", location)
+	}
+	if command.Meta.Name == "" {
+		return fmt.Errorf("command %q name is required", command.Spec.Key)
+	}
+	if err := validateOptions(command.Spec.Options, command.Spec.Key); err != nil {
+		return err
+	}
+	for key, child := range command.Commands {
+		if child == nil {
+			return fmt.Errorf("command %q contains a nil child", command.Spec.Key)
+		}
+		if key != child.Spec.Key {
+			return fmt.Errorf("command map key %q does not match command key %q", key, child.Spec.Key)
+		}
+		if err := validateCommand(*child, command.Spec.Key+"."+key); err != nil {
+			return err
+		}
+	}
+	return validateCommandNames(command.Commands, command.Spec.Key)
+}
+
+func validateTree(command Command, globals []*Option) error {
+	effective := append([]*Option(nil), globals...)
+	for _, option := range command.Spec.Options {
+		effective = append(effective, option)
+	}
+	if err := validateEffectiveOptions(effective, command.Spec.Key); err != nil {
+		return err
+	}
+	nextGlobals := append([]*Option(nil), globals...)
+	for _, option := range command.Spec.Options {
+		if option.Meta.Global {
+			nextGlobals = append(nextGlobals, option)
+		}
+	}
+	for _, child := range command.Commands {
+		if err := validateTree(*child, nextGlobals); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateCommandNames(commands Commands, parent string) error {
+	names := map[string]string{}
+	for _, command := range commands {
+		for _, name := range append([]string{command.Meta.Name}, command.Meta.Aliases...) {
+			if name == "" {
+				return fmt.Errorf("command %q has an empty alias", command.Spec.Key)
+			}
+			if other, exists := names[name]; exists {
+				return fmt.Errorf("commands %q and %q share name or alias %q under %q", other, command.Spec.Key, name, parent)
+			}
+			names[name] = command.Spec.Key
+		}
+	}
+	return nil
+}
+
+func validateOptions(options Options, commandKey string) error {
+	for key, option := range options {
+		if option == nil {
+			return fmt.Errorf("command %q contains a nil option", commandKey)
+		}
+		if key != option.Spec.Key {
+			return fmt.Errorf("option map key %q does not match option key %q", key, option.Spec.Key)
+		}
+		if option.Spec.Key == "" || option.Meta.Name == "" {
+			return fmt.Errorf("option key and name are required")
+		}
+		if option.Spec.Kind != StringOption && option.Spec.Kind != BoolOption {
+			return fmt.Errorf("option %q has unsupported kind", option.Spec.Key)
+		}
+		if option.Spec.Required && option.Spec.Kind == BoolOption {
+			return fmt.Errorf("boolean option %q cannot be required", option.Spec.Key)
+		}
+		if option.Meta.Default != nil && !defaultMatches(option.Spec.Kind, option.Meta.Default) {
+			return fmt.Errorf("option %q default does not match its kind", option.Spec.Key)
+		}
+		if option.Spec.Kind == BoolOption && option.Meta.Default == true {
+			return fmt.Errorf("boolean option %q default must be false", option.Spec.Key)
+		}
+	}
+	return nil
+}
+
+func validateEffectiveOptions(options []*Option, commandKey string) error {
+	keys, names, shorts := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for _, option := range options {
+		if keys[option.Spec.Key] {
+			return fmt.Errorf("effective options for command %q duplicate key %q", commandKey, option.Spec.Key)
+		}
+		keys[option.Spec.Key] = true
+		if names[option.Meta.Name] {
+			return fmt.Errorf("effective options for command %q duplicate name --%s", commandKey, option.Meta.Name)
+		}
+		names[option.Meta.Name] = true
+		if option.Meta.ShortName != "" {
+			if shorts[option.Meta.ShortName] {
+				return fmt.Errorf("effective options for command %q duplicate short name -%s", commandKey, option.Meta.ShortName)
+			}
+			shorts[option.Meta.ShortName] = true
+		}
+	}
+	return nil
+}
+
+func defaultMatches(kind OptionKind, value any) bool {
+	switch kind {
+	case StringOption:
+		_, ok := value.(string)
+		return ok
+	case BoolOption:
+		_, ok := value.(bool)
+		return ok
+	default:
+		return false
+	}
+}
+
+func (cli CLI) resolveCommand(args Arguments) (*Command, Options, Arguments) {
+	selected := &cli.Command
+	ancestors := []*Command{}
+	args = append(Arguments(nil), args...)
+	for len(args) > 0 && args[0] != "--" && !strings.HasPrefix(args[0], "-") {
+		child, ok := selected.SubCommand(args[0])
+		if !ok {
 			break
 		}
-		if args[0][0] == byte('-') {
-			break
-		}
-		cmd.Args = append(cmd.Args, args[0])
+		ancestors = append(ancestors, selected)
+		selected = child
 		args = args[1:]
 	}
-	flags := cmd.Options.FlagSet()
-	if err = flags.Parse(args); err != nil {
-		return err
+	command := *selected
+	command.Meta.Aliases = append([]string(nil), selected.Meta.Aliases...)
+	command.State = CommandState{}
+	command.Spec.Options = copyOptions(selected.Spec.Options)
+	effective := Options{}
+	for _, ancestor := range ancestors {
+		for key, option := range ancestor.Spec.Options {
+			if option.Meta.Global {
+				effective[key] = copyOption(option)
+			}
+		}
 	}
-	if len(flags.Args()) == 0 {
-		return nil
-	} // done! (if no remaining arguments)
-	cmd.Args = append(cmd.Args, flags.Args()[0]) // argument capture
-	return cmd.ParseArguments(flags.Args()[1:])  // RECURSION!! (parse remaining arguments, if any)
+	for key, option := range selected.Spec.Options {
+		effective[key] = copyOption(option)
+	}
+	return &command, effective, args
 }
 
-func (cmd *Command) ProcessArguments(args Arguments) (err error) {
-	if cmd.Args.IsEmpty() {
-		return nil
-	} // guard
-	if cmd.Config.Helper == nil {
-		return nil
+func copyOptions(options Options) Options {
+	result := Options{}
+	for key, option := range options {
+		result[key] = copyOption(option)
 	}
-	err = cmd.Config.Helper(cmd)
+	return result
+}
+
+func copyOption(option *Option) *Option {
+	copy := *option
+	copy.State = OptionState{}
+	return &copy
+}
+
+func resolveOptions(options Options, execution *Execution) error {
+	for _, option := range options {
+		if option.State.Value == nil {
+			if option.Meta.EnvName != "" && execution.LookupEnv != nil {
+				if value, ok := execution.LookupEnv(option.Meta.EnvName); ok {
+					parsed, err := parseOptionValue(option, value)
+					if err != nil {
+						return err
+					}
+					option.State.Value = parsed
+				}
+			}
+			if option.State.Value == nil && option.Meta.Default != nil {
+				option.State.Value = option.Meta.Default
+			}
+			if option.State.Value == nil {
+				if option.Spec.Kind == BoolOption {
+					option.State.Value = false
+				} else {
+					option.State.Value = ""
+				}
+			}
+		}
+		if option.Spec.Required && option.StringValue() == "" {
+			return fmt.Errorf("option --%s is required", option.Meta.Name)
+		}
+	}
+	return nil
+}
+
+func parseOptionValue(option *Option, value string) (any, error) {
+	if option.Spec.Kind == StringOption {
+		return value, nil
+	}
+	parsed, err := strconv.ParseBool(value)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("invalid boolean environment value %q for option --%s", value, option.Meta.Name)
 	}
-	return cmd.ParseArguments(args) // reprocess arguments to capture dynamic option values?
-}
-
-func (cmd *Command) Validate() (err error) {
-	for _, option := range cmd.Options {
-		if err := option.Validate(); err != nil {
-			return err
-		}
-	}
-	if cmd.Config.Validator != nil {
-		if err := cmd.Config.Validator(cmd); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (cmd *Command) Help(err error) {
-	usage := cmd.Usage()
-	usage += cmd.SubCommands.Usage()
-	usage += cmd.Options.Usage()
-	fmt.Println(usage)
-	if err != nil {
-		fmt.Printf("\nError: %s\n", err)
-		os.Exit(1)
-	}
-	os.Exit(0)
-}
-
-func (cmds Commands) Usage() (usage string) {
-	if len(cmds) == 0 {
-		return usage
-	}
-	if len(cmds) > 0 {
-		usage += "\nAvailable commands:\n"
-	}
-	longcmd := slices.MaxFunc(cmds, func(a, b *Command) int {
-		return cmp.Compare(len(a.Config.Name), len(b.Config.Name))
-	})
-	for _, cmd := range cmds {
-		usage += fmt.Sprintf("\t%-*s %s\n", len(longcmd.Config.Name)+1, cmd.Config.Name, cmd.Config.Description)
-	}
-	return usage
-}
-func (cmd *Command) Usage() (usage string) {
-	usage += fmt.Sprintf("%s\n\n", cmd.Config.Description)
-	usage += "Usage:\n"
-	usage += fmt.Sprintf("\t%s\n", cmd.Config.Usage)
-	return usage
-}
-
-func (cmd Command) ColumnWidth(items ColumnListable, field string, padding int) (width int) {
-	if padding == 0 {
-		padding = 1
-	}
-	values := items.ColumnValues(field)
-	for _, v := range values {
-		if len(v) > width {
-			width = len(v)
-		}
-	}
-	return width + padding
-}
-
-func (cmds Commands) Lookup(name string) (*Command, error) {
-	for _, cmd := range cmds {
-		if cmd.Config.Name == name {
-			return cmd, nil
-		}
-	}
-	return nil, fmt.Errorf("command \"%s\" not found", name)
-}
-
-func (cmd *Command) Execute(args Arguments) {
-	// execute subcommand (if requested)
-	var subcommand *Command
-	if len(cmd.SubCommands) > 0 && len(args) > 0 {
-		subcommand, _ = cmd.SubCommands.Lookup(args[0])
-	}
-	if subcommand != nil {
-		subcommand.Options = append(subcommand.Options, cmd.Options.Globals()...) // add global options
-		subcommand.Execute(args[1:])
-	}
-
-	// parse environment and arguments
-	cmd.ParseEnvironment()
-	if err := cmd.ParseArguments(args); err != nil {
-		cmd.Help(err)
-	}
-	if cmd.Options.Get("help") == "true" {
-		cmd.Help(nil)
-	} // display help if requested
-	if err := cmd.Validate(); err != nil {
-		cmd.Help(err)
-	}
-	if cmd.Config.Handler == nil {
-		cmd.Help(fmt.Errorf("no handler provided for command"))
-	}
-	if err := cmd.Config.Handler(cmd); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	os.Exit(0)
-}
-
-// CommandConfig holds Command configuration settings.
-type CommandConfig struct {
-	Name        string
-	Description string
-	Usage       string
-	Helper      func(cmd *Command) error
-	Validator   func(cmd *Command) error
-	Handler     func(cmd *Command) error
-}
-
-// CommandOption holds Command options (e.g. flags).
-type CommandOption struct {
-	Name        string
-	ShortName   string
-	EnvName     string
-	Description string
-	Required    bool
-	Secret      bool
-	Global      bool
-	Value       flag.Value
-	Default     string
-	Handler     func(string) error
-
-	Boolean    bool
-	RawValue   string
-	BoolValue  bool
-	Registered bool
-}
-type CommandOptions []*CommandOption
-
-func (option *CommandOption) FlagsNames() string {
-	flags := ""
-	if option.ShortName != "" {
-		flags += fmt.Sprintf("-%s", option.ShortName)
-	}
-	if len(flags) > 0 {
-		flags += ", "
-	} else {
-		flags = "    "
-	}
-	if option.Name != "" {
-		flags += fmt.Sprintf("--%s", option.Name)
-	}
-	return flags
-}
-
-func (options CommandOptions) FlagColumnWidth() (width int) {
-	longflag := slices.MaxFunc(options, func(a, b *CommandOption) int {
-		return cmp.Compare(len(a.FlagsNames()), len(b.FlagsNames()))
-	})
-	return len(longflag.FlagsNames()) + 1
-}
-
-func (options CommandOptions) FlagSet() *flag.FlagSet {
-	flags := &flag.FlagSet{}
-	flags.SetOutput(io.Discard) // suppress flagset output
-	flags.Usage = func() {}     // disable flagset usage
-	for _, option := range options {
-		ParseOptionFlags(flags, option)
-	}
-	return flags
-}
-
-func (option *CommandOption) DefaultValue() (value string) {
-	if value := os.Getenv(option.EnvName); value != "" {
-		return value
-	}
-	return fmt.Sprintf("%v", option.Default)
-}
-
-func (option *CommandOption) Usage() string {
-	usage := option.Description
-	if option.Secret {
-		return usage
-	} // guard against printing secret values in help output
-	if option.Required {
-		usage += " (required)"
-	}
-	if option.EnvName != "" {
-		usage += fmt.Sprintf(" (env: %s)", option.EnvName)
-	}
-	if defaultValue := option.DefaultValue(); defaultValue != "" {
-		usage += fmt.Sprintf(" (default: %s)", defaultValue)
-	}
-	return usage
-}
-
-func (options CommandOptions) Usage() (usage string) {
-	if len(options) == 0 {
-		return usage
-	}
-	usage += "\nOptions:\n"
-	for _, option := range options {
-		usage += fmt.Sprintf("\t%-*s %s\n", options.FlagColumnWidth(), option.FlagsNames(), option.Usage())
-	}
-	return usage
-}
-
-func (option *CommandOption) Validate() error {
-	if option.Required && option.Default == "" && option.RawValue == "" {
-		return fmt.Errorf("option \"--%s\" is required", option.Name)
-	}
-	return nil
-}
-
-func (option *CommandOption) String() string {
-	if option.Boolean {
-		return fmt.Sprintf("%v", option.BoolValue)
-	}
-	if option.RawValue != "" {
-		return option.RawValue
-	}
-	return option.DefaultValue()
-}
-
-func (options CommandOptions) Lookup(name string) *CommandOption {
-	for _, option := range options {
-		if option.Name == name {
-			return option
-		}
-	}
-	return nil
-}
-
-func (options CommandOptions) Get(name string) string {
-	option := options.Lookup(name)
-	if option == nil {
-		return ""
-	}
-	return option.String()
-}
-
-func (options CommandOptions) Globals() (globals CommandOptions) {
-	for _, option := range options {
-		if option.Global {
-			globals = append(globals, option)
-		}
-	}
-	return globals
-}
-
-// =============================================================================
-// Helper types, methods, and functions
-// =============================================================================
-type Arguments []string
-
-func (args Arguments) IsEmpty() bool {
-	return len(args) == 0
-}
-
-func ParseOptionFlags(flags *flag.FlagSet, option *CommandOption) {
-	if option.Registered {
-		return
-	}
-	ParseOptionFlag(flags, option, option.Name)
-	if option.ShortName == "" {
-		return
-	}
-	ParseOptionFlag(flags, option, option.ShortName)
-	option.Registered = true
-}
-func ParseOptionFlag(flags *flag.FlagSet, option *CommandOption, name string) {
-	if option.Handler != nil {
-		flags.Func(name, option.Description, option.Handler)
-		return
-	}
-	if option.Value != nil {
-		flags.Var(option.Value, name, option.Description)
-		return
-	}
-	if option.Boolean {
-		flags.BoolVar(&option.BoolValue, name, option.DefaultValue() == "true", option.Description)
-		return
-	}
-	flags.StringVar(&option.RawValue, name, option.DefaultValue(), option.Description)
-}
-
-type ColumnListable interface {
-	ColumnValues(field string) []string // return the column value for the given name
-}
-
-type Comparable interface {
-	ComparedBy(field string) string // return the value to compare
+	return parsed, nil
 }

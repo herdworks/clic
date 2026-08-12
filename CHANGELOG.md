@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## Unreleased
 
+* **BREAKING:** Replaced the process-coupled mutable command framework with
+  composable `CLI`, `Command`, and `Option` trees. Commands and options now
+  split host metadata, reusable specifications, and execution-local state.
+* Added injected `Execution` and `CLI.Run(execution, args) Result`; clic no
+  longer reads process arguments, writes process streams, or exits.
+* Added semantic command/option maps, command aliases, deterministic display
+  ordering, scoped global options, string and bare boolean option parsing, and
+  opt-in `DefaultHelp`.
+* Added fresh command factories and `MustCommandsFrom` for reusable package
+  adapters, with hsync as the first downstream composition.
+* **BREAKING:** Renamed the module from `github.com/herdworks/clif` to
+  `github.com/herdworks/clic`, and the root package from `clif` to `clic`.
+* Repositioned clic as a CLI Composer.
+
 ## v0.2.0 (2026-08-11)
 
 * Renamed the module from `github.com/herdworks/cli-go` to `github.com/herdworks/clif` 
