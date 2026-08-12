@@ -1,4 +1,5 @@
-package cli
+// Package clif provides primitives for building command-line interfaces.
+package clif
 
 import (
 	"cmp"
@@ -84,34 +85,54 @@ func (cmd *Command) ParseEnvironment() {
 }
 
 func (cmd *Command) ParseArguments(args Arguments) (err error) {
-	if args.IsEmpty() { return nil } // guard
+	if args.IsEmpty() {
+		return nil
+	} // guard
 	for {
-		if len(args) == 0 { break }
-		if args[0][0] == byte('-') { break }
- 		cmd.Args = append(cmd.Args, args[0])
+		if len(args) == 0 {
+			break
+		}
+		if args[0][0] == byte('-') {
+			break
+		}
+		cmd.Args = append(cmd.Args, args[0])
 		args = args[1:]
 	}
 	flags := cmd.Options.FlagSet()
-	if err = flags.Parse(args); err != nil { return err }
-	if len(flags.Args()) == 0 { return nil }     // done! (if no remaining arguments)
+	if err = flags.Parse(args); err != nil {
+		return err
+	}
+	if len(flags.Args()) == 0 {
+		return nil
+	} // done! (if no remaining arguments)
 	cmd.Args = append(cmd.Args, flags.Args()[0]) // argument capture
 	return cmd.ParseArguments(flags.Args()[1:])  // RECURSION!! (parse remaining arguments, if any)
 }
 
 func (cmd *Command) ProcessArguments(args Arguments) (err error) {
-	if cmd.Args.IsEmpty() { return nil } // guard
-	if cmd.Config.Helper == nil { return nil }
+	if cmd.Args.IsEmpty() {
+		return nil
+	} // guard
+	if cmd.Config.Helper == nil {
+		return nil
+	}
 	err = cmd.Config.Helper(cmd)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	return cmd.ParseArguments(args) // reprocess arguments to capture dynamic option values?
 }
 
 func (cmd *Command) Validate() (err error) {
 	for _, option := range cmd.Options {
-		if err := option.Validate(); err != nil { return err }
+		if err := option.Validate(); err != nil {
+			return err
+		}
 	}
 	if cmd.Config.Validator != nil {
-		if err := cmd.Config.Validator(cmd); err != nil { return err }
+		if err := cmd.Config.Validator(cmd); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -129,8 +150,12 @@ func (cmd *Command) Help(err error) {
 }
 
 func (cmds Commands) Usage() (usage string) {
-	if len(cmds) == 0 { return usage }
-	if len(cmds) > 0 { usage += "\nAvailable commands:\n" }
+	if len(cmds) == 0 {
+		return usage
+	}
+	if len(cmds) > 0 {
+		usage += "\nAvailable commands:\n"
+	}
 	longcmd := slices.MaxFunc(cmds, func(a, b *Command) int {
 		return cmp.Compare(len(a.Config.Name), len(b.Config.Name))
 	})
@@ -147,10 +172,14 @@ func (cmd *Command) Usage() (usage string) {
 }
 
 func (cmd Command) ColumnWidth(items ColumnListable, field string, padding int) (width int) {
-	if padding == 0 { padding = 1 }
+	if padding == 0 {
+		padding = 1
+	}
 	values := items.ColumnValues(field)
 	for _, v := range values {
-		if len(v) > width { width = len(v) }
+		if len(v) > width {
+			width = len(v)
+		}
 	}
 	return width + padding
 }
@@ -177,9 +206,15 @@ func (cmd *Command) Execute(args Arguments) {
 
 	// parse environment and arguments
 	cmd.ParseEnvironment()
-	if err := cmd.ParseArguments(args); err != nil { cmd.Help(err) }
-	if cmd.Options.Get("help") == "true" { cmd.Help(nil) } // display help if requested
-	if err := cmd.Validate(); err != nil { cmd.Help(err) }
+	if err := cmd.ParseArguments(args); err != nil {
+		cmd.Help(err)
+	}
+	if cmd.Options.Get("help") == "true" {
+		cmd.Help(nil)
+	} // display help if requested
+	if err := cmd.Validate(); err != nil {
+		cmd.Help(err)
+	}
 	if cmd.Config.Handler == nil {
 		cmd.Help(fmt.Errorf("no handler provided for command"))
 	}

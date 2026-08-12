@@ -1,14 +1,12 @@
-# `herdworks/cli-go`
-
-This is not the CLI package you are looking for.
+# `clif` is a CLI Framework
 
 ## Overview
 
-* A [`CLI`](/cli.go#L12-L20) is a program with one or more Commands.
+* A [`CLI`](./cli.go) is a program with one or more Commands.
 
-* A [`Command`](/cli.go#L66-L72) is an action that can be performed by the program.
+* A [`Command`](./cli.go) is an action that can be performed by the program.
 
-* A [`CommandConfig`](/cli.go#L193-L201) is used to configure a Command.
+* A [`CommandConfig`](./cli.go) is used to configure a Command.
 
   * `Name` configures the command or subcommand name
   * `Description` configures the command description in `--help` output
@@ -16,7 +14,7 @@ This is not the CLI package you are looking for.
   * `Validator` configures the command validation function
   * `Handler` configures the command processing function
 
-* A [`CommandOption`](/cli.go#L203-L221) is used to configure a Command option (e.g. a flag).
+* A [`CommandOption`](./cli.go) is used to configure a Command option (e.g. a flag).
 
   * `Name` and `ShortName` configure long and short names (e.g. `--example` and `-e`)
   * `Description` configures the option description in `--help` output
@@ -29,18 +27,17 @@ This is not the CLI package you are looking for.
 
 * Built-in helper utilities, including basic columnar layouts.
 
-See `clippy.go` for a minimal app that registers a global `--help` flag and runs `Clippy.Execute()`.
+See [`cmd/clippy`](./cmd/clippy) for a minimal external consumer that registers a global `--help` flag and runs `Clippy.Execute()`.
 
 ## Example
 
 Build the example CLI program (`clippy`) using `go build`:
 
 ```shell
-go build -o clippy
+go build -o clippy ./cmd/clippy
 ```
 
 ## Roadmap
 
 * Auto generate shell completion scripts
 * Add a built-in `completion` subcommand for installing shell completion scripts
-

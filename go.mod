@@ -1,3 +1,3 @@
-module github.com/herdworks/cli-go
+module github.com/herdworks/clif
 
 go 1.23.5
