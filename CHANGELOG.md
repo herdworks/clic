@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## Unreleased
 
+## v0.2.0 (2026-08-11)
+
 * Renamed the module from `github.com/herdworks/cli-go` to `github.com/herdworks/clif` 
 * Renamed root package from `cli` to `clif`.
 * Moved the Clippy example executable from `example/clippy.go` to `cmd/clippy`; 
