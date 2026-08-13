@@ -97,7 +97,7 @@ func writeOptions(output *strings.Builder, options Options) {
 	if len(visible) == 0 {
 		return
 	}
-	output.WriteString("\nOptions:\n")
+	output.WriteString("\nOPTIONS\n")
 	width := 0
 	for _, option := range visible {
 		if len(optionFlags(*option)) > width {

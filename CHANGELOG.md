@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## Unreleased
 
+* Updated default help output "OPTIONS" header
+
 ## v0.3.2 (2026-08-12)
 
 * Added `MustOptionsFrom` for composing option factories while rejecting empty
