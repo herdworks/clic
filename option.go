@@ -63,3 +63,20 @@ func (options Options) Sorted() []*Option {
 	})
 	return result
 }
+
+// MustOptionsFrom composes options returned from factories. It panics if a
+// factory returns an empty key or a key already produced by another factory.
+func MustOptionsFrom(factories ...func() Option) Options {
+	options := make(Options, len(factories))
+	for _, factory := range factories {
+		option := factory()
+		if option.Spec.Key == "" {
+			panic("clic option factory returned an empty key")
+		}
+		if _, exists := options[option.Spec.Key]; exists {
+			panic("clic option factories returned duplicate key " + option.Spec.Key)
+		}
+		options[option.Spec.Key] = &option
+	}
+	return options
+}

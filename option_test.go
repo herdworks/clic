@@ -2,6 +2,22 @@ package clic
 
 import "testing"
 
+func TestMustOptionsFrom(t *testing.T) {
+	options := MustOptionsFrom(func() Option {
+		return Option{Meta: OptionMeta{Name: "name"}, Spec: OptionSpec{Key: "name", Kind: StringOption}}
+	})
+	if option := options["name"]; option == nil || option.Spec.Key != "name" {
+		t.Fatalf("MustOptionsFrom() = %#v", options)
+	}
+	mustPanic(t, func() {
+		MustOptionsFrom(
+			func() Option { return Option{Spec: OptionSpec{Key: "same"}} },
+			func() Option { return Option{Spec: OptionSpec{Key: "same"}} },
+		)
+	})
+	mustPanic(t, func() { MustOptionsFrom(func() Option { return Option{} }) })
+}
+
 func TestValidateEffectiveOptionCollisions(t *testing.T) {
 	tests := []struct {
 		name string

@@ -141,9 +141,7 @@ func HelloSpec() clic.CommandSpec {
 	name := HelloNameOption()
 	return clic.CommandSpec{
 		Key: "hello",
-		Options: clic.Options{
-			"name": &name,
-		},
+		Options: clic.MustOptionsFrom(func() clic.Option { return name }),
 		Handler: helloHandler,
 	}
 }
@@ -176,6 +174,26 @@ func helloHandler(execution *clic.Execution) error {
 	return err
 }
 ```
+
+Use `clic.MustOptionsFrom` to compose options from factories. It rejects empty
+and duplicate option keys when the command tree is constructed.
+
+## List output
+
+Commands can write a selected `ColumnListable` projection as an aligned table
+or a JSON array. Each `clic.Field` uses its `Key` to obtain display values and
+its `Header` for columnar output:
+
+```go
+err := clic.WriteList(execution.Stdout, clic.ColumnarFormat, skills,
+	clic.Field{Key: "name", Header: "Name"},
+	clic.Field{Key: "description", Header: "Description"},
+)
+```
+
+Pass `clic.JSONFormat` to write the same selected fields as string-valued JSON
+records. Use `clic.WriteJSON` when a command needs to write a typed JSON value
+instead of a display-value projection.
 
 ## Roadmap
 
