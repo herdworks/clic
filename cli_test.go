@@ -59,6 +59,109 @@ func TestRunResolvesCommandsOptionsAndKeepsStateLocal(t *testing.T) {
 	}
 }
 
+func TestCommandNameDefaultsToSpecKey(t *testing.T) {
+	var name, path string
+	cli := CLI{
+		Command: Command{
+			Spec: CommandSpec{
+				Key: "tool",
+				Help: func(meta CommandMeta, execution *Execution) error {
+					name = meta.Name
+					path = execution.CommandPathString()
+					return nil
+				},
+			},
+			Commands: Commands{
+				"run": {
+					Spec: CommandSpec{
+						Key: "run",
+						Handler: func(execution *Execution) error {
+							name = execution.Command.Meta.Name
+							path = execution.CommandPathString()
+							return nil
+						},
+					},
+				},
+			},
+		},
+	}
+	if result := cli.Run(testExecution(nil), Arguments{"run"}); result.Error != nil {
+		t.Fatalf("Run(run) = %#v", result)
+	}
+	if name != "run" || path != "tool run" {
+		t.Fatalf("run command = name %q, path %q", name, path)
+	}
+	if result := cli.Run(testExecution(nil), nil); result.Error != nil {
+		t.Fatalf("Run() = %#v", result)
+	}
+	if name != "tool" || path != "tool" {
+		t.Fatalf("root command = name %q, path %q", name, path)
+	}
+}
+
+func TestRunResolvesCommandLinksWithoutDisplayingThemInHelp(t *testing.T) {
+	var path string
+	output := &bytes.Buffer{}
+	cli := CLI{
+		Command: Command{
+			Meta: CommandMeta{
+				Name: "hyperctl",
+			},
+			Spec: CommandSpec{
+				Key:  "hyperctl",
+				Help: DefaultHelp,
+			},
+			Commands: Commands{
+				"htxt": {
+					Meta: CommandMeta{
+						Name: "website",
+					},
+					Spec: CommandSpec{
+						Key: "htxt",
+					},
+					Commands: Commands{
+						"build": {
+							Meta: CommandMeta{
+								Name: "build",
+							},
+							Spec: CommandSpec{
+								Key: "build",
+								Handler: func(execution *Execution) error {
+									path = execution.CommandPathString()
+									return nil
+								},
+							},
+						},
+					},
+				},
+			},
+			Links: Links{
+				{
+					From: "build",
+					To: []string{
+						"website",
+						"build",
+					},
+				},
+			},
+		},
+	}
+	if result := cli.Run(testExecution(nil), Arguments{"build"}); result.Error != nil {
+		t.Fatalf("Run(build) = %#v", result)
+	}
+	if path != "hyperctl website build" {
+		t.Fatalf("command path = %q, want hyperctl website build", path)
+	}
+	execution := testExecution(nil)
+	execution.Stdout = output
+	if result := cli.Run(execution, Arguments{"--help"}); result.Error != nil {
+		t.Fatalf("Run(--help) = %#v", result)
+	}
+	if strings.Contains(output.String(), "build") {
+		t.Fatalf("root help includes link: %q", output.String())
+	}
+}
+
 func TestRunOptionParsingAndPrecedence(t *testing.T) {
 	var got string
 	cli := commandCLI(Options{
@@ -92,6 +195,97 @@ func TestRunOptionParsingAndPrecedence(t *testing.T) {
 	result = cli.Run(testExecution(nil), Arguments{"--bool=false"})
 	if result.ExitCode != 1 {
 		t.Fatalf("boolean value = %#v", result)
+	}
+}
+
+func TestRunResolvesEnvironmentPrefixesByOptionDeclaration(t *testing.T) {
+	var config, theme, palette string
+	cli := CLI{
+		Command: Command{
+			Meta: CommandMeta{
+				Name:      "tool",
+				EnvPrefix: "ROOT_",
+			},
+			Spec: CommandSpec{
+				Key: "tool",
+				Options: Options{
+					"config": {
+						Meta: OptionMeta{
+							Name:    "config",
+							EnvName: "{{ .EnvPrefix }}CONFIG",
+							Global:  true,
+						},
+						Spec: OptionSpec{
+							Key:  "config",
+							Kind: StringOption,
+						},
+					},
+				},
+			},
+			Commands: Commands{
+				"theme": {
+					Meta: CommandMeta{
+						Name:      "theme",
+						EnvPrefix: "THEME_",
+					},
+					Spec: CommandSpec{
+						Key: "theme",
+						Options: Options{
+							"theme": {
+								Meta: OptionMeta{
+									Name:    "theme",
+									EnvName: "{{ .EnvPrefix }}THEME",
+									Global:  true,
+								},
+								Spec: OptionSpec{
+									Key:  "theme",
+									Kind: StringOption,
+								},
+							},
+						},
+					},
+					Commands: Commands{
+						"child": {
+							Meta: CommandMeta{
+								Name: "child",
+							},
+							Spec: CommandSpec{
+								Key: "child",
+								Options: Options{
+									"palette": {
+										Meta: OptionMeta{
+											Name:    "palette",
+											EnvName: "{{ .EnvPrefix }}PALETTE",
+										},
+										Spec: OptionSpec{
+											Key:  "palette",
+											Kind: StringOption,
+										},
+									},
+								},
+								Handler: func(execution *Execution) error {
+									config = execution.Options["config"].StringValue()
+									theme = execution.Options["theme"].StringValue()
+									palette = execution.Options["palette"].StringValue()
+									return nil
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	result := cli.Run(testExecution(map[string]string{
+		"ROOT_CONFIG":   "site.yaml",
+		"THEME_THEME":   "theme.json",
+		"THEME_PALETTE": "warm",
+	}), Arguments{"theme", "child"})
+	if result.Error != nil {
+		t.Fatalf("Run() = %#v", result)
+	}
+	if config != "site.yaml" || theme != "theme.json" || palette != "warm" {
+		t.Fatalf("environment values = config %q, theme %q, palette %q", config, theme, palette)
 	}
 }
 
@@ -200,7 +394,7 @@ func TestRunLifecycleDoesNotWriteFrameworkErrors(t *testing.T) {
 
 func TestValidateRejectsInvalidComposition(t *testing.T) {
 	tests := []CLI{
-		{Command: Command{Spec: CommandSpec{Key: "tool"}}},
+		{Command: Command{Meta: CommandMeta{Name: "tool"}}},
 		{Command: Command{Meta: CommandMeta{Name: "tool"}, Spec: CommandSpec{Key: "tool"}, Commands: Commands{"child": {Meta: CommandMeta{Name: "child", Aliases: []string{""}}, Spec: CommandSpec{Key: "child"}}}}},
 		{Command: Command{Meta: CommandMeta{Name: "tool"}, Spec: CommandSpec{Key: "tool", Options: Options{"wrong": {Meta: OptionMeta{Name: "option"}, Spec: OptionSpec{Key: "option", Kind: StringOption}}}}}},
 		{Command: Command{Meta: CommandMeta{Name: "tool"}, Spec: CommandSpec{Key: "tool", Options: Options{"option": nil}}}},
@@ -274,7 +468,7 @@ func TestDefaultHelp(t *testing.T) {
 	if err := DefaultHelp(CommandMeta{Name: "tool", Description: "A test tool."}, execution); err != nil {
 		t.Fatalf("DefaultHelp() = %v", err)
 	}
-	want := "A test tool.\n\nUSAGE\n\ttool [command] [options]\n\nAVAILABLE COMMANDS\n\n\tvisible  Visible command.\n\nOptions:\n\t-c, --config Configuration. (required) (env: CONFIG) (default: site.yaml)\n"
+	want := "A test tool.\n\nUSAGE\n\ttool [command] [options]\n\nAVAILABLE COMMANDS\n\n\tvisible  Visible command.\n\nOPTIONS\n\t-c, --config  Configuration. (required) (env: CONFIG) (default: site.yaml)\n"
 	if got := output.String(); got != want {
 		t.Fatalf("DefaultHelp() = %q, want %q", got, want)
 	}
@@ -282,7 +476,7 @@ func TestDefaultHelp(t *testing.T) {
 	if err := DefaultHelp(CommandMeta{Name: "tool", Usage: []string{"tool first", "tool second"}}, execution); err != nil {
 		t.Fatalf("DefaultHelp() = %v", err)
 	}
-	want = "USAGE\n\ttool first\n\ttool second\n\nAVAILABLE COMMANDS\n\n\tvisible  Visible command.\n\nOptions:\n\t-c, --config Configuration. (required) (env: CONFIG) (default: site.yaml)\n"
+	want = "USAGE\n\ttool first\n\ttool second\n\nAVAILABLE COMMANDS\n\n\tvisible  Visible command.\n\nOPTIONS\n\t-c, --config  Configuration. (required) (env: CONFIG) (default: site.yaml)\n"
 	if got := output.String(); got != want {
 		t.Fatalf("DefaultHelp() multiple usage = %q, want %q", got, want)
 	}

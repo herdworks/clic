@@ -18,6 +18,36 @@ func TestMustOptionsFrom(t *testing.T) {
 	mustPanic(t, func() { MustOptionsFrom(func() Option { return Option{} }) })
 }
 
+func TestOptionNameDefaultsToSpecKey(t *testing.T) {
+	var name string
+	cli := commandCLI(Options{
+		"config": {
+			Meta: OptionMeta{
+				Description: "Configure {{ .Name }}.",
+			},
+			Spec: OptionSpec{
+				Key:  "config",
+				Kind: StringOption,
+			},
+		},
+	}, func(execution *Execution) error {
+		name = execution.Options["config"].Meta.Name
+		return nil
+	})
+	if result := cli.Run(testExecution(nil), Arguments{"--config", "site.yaml"}); result.Error != nil {
+		t.Fatalf("Run() = %#v", result)
+	}
+	if name != "config" {
+		t.Fatalf("execution option name = %q, want config", name)
+	}
+	if source := cli.Spec.Options["config"].Meta.Name; source != "" {
+		t.Fatalf("source option name = %q, want empty", source)
+	}
+	if got := cli.Spec.Options["config"].Name(); got != "config" {
+		t.Fatalf("Option.Name() = %q, want config", got)
+	}
+}
+
 func TestValidateEffectiveOptionCollisions(t *testing.T) {
 	tests := []struct {
 		name string

@@ -96,7 +96,7 @@ func TestDefaultHelpAlignsLongOnlyOptions(t *testing.T) {
 	if err := DefaultHelp(CommandMeta{Name: "tool"}, execution); err != nil {
 		t.Fatalf("DefaultHelp() = %v", err)
 	}
-	if !strings.Contains(output.String(), "\t    --providers Provider names.\n") {
+	if !strings.Contains(output.String(), "\t    --providers  Provider names.\n") {
 		t.Fatalf("help output = %q", output.String())
 	}
 }
@@ -119,5 +119,93 @@ func TestDefaultHelpShowsNonEmptyEffectiveOptionValues(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "(default: metadata)") {
 		t.Fatalf("empty effective value shown: %q", output.String())
+	}
+}
+
+func TestDefaultHelpUsesDefaultOptionNameInTemplates(t *testing.T) {
+	output := &bytes.Buffer{}
+	execution := &Execution{
+		Stdout: output,
+		Command: &Command{
+			Spec: CommandSpec{
+				Key: "tool",
+			},
+		},
+		Options: Options{
+			"config": {
+				Meta: OptionMeta{
+					Description: "Configure {{ .Name }}.",
+				},
+				Spec: OptionSpec{
+					Key:  "config",
+					Kind: StringOption,
+				},
+			},
+		},
+	}
+	if err := DefaultHelp(CommandMeta{}, execution); err != nil {
+		t.Fatalf("DefaultHelp() = %v", err)
+	}
+	if !strings.Contains(output.String(), "--config  Configure config.\n") {
+		t.Fatalf("help output = %q", output.String())
+	}
+}
+
+func TestDefaultHelpRendersMetadataTemplatesForMountedCommands(t *testing.T) {
+	output := &bytes.Buffer{}
+	cli := CLI{
+		Command: Command{
+			Meta: CommandMeta{
+				Name:        "host",
+				Description: "{{ .CLI }} at {{ .Command }}.",
+			},
+			Spec: CommandSpec{
+				Key:  "host",
+				Help: DefaultHelp,
+			},
+			Commands: Commands{
+				"theme": {
+					Meta: CommandMeta{
+						Name:        "theme",
+						Description: "Manage {{ .Name }} at {{ .Command }}.",
+						Usage: []string{
+							"{{ .Name }}: {{ .Command }} [command]",
+						},
+					},
+					Spec: CommandSpec{
+						Key:  "theme",
+						Help: DefaultHelp,
+						Options: Options{
+							"config": {
+								Meta: OptionMeta{
+									Name:        "config",
+									ShortName:   "c",
+									EnvName:     "HOST_CONFIG",
+									Description: "Configure {{ .Name }} (-{{ .ShortName }}) from {{ .EnvName }} for {{ .CLI }} at {{ .Command }}.",
+								},
+								Spec: OptionSpec{
+									Key:  "config",
+									Kind: StringOption,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	execution := testExecution(nil)
+	execution.Stdout = output
+	if result := cli.Run(execution, Arguments{"theme", "--help"}); result.Error != nil {
+		t.Fatalf("Run() = %#v", result)
+	}
+	for _, want := range []string{
+		"Manage theme at host theme.",
+		"theme: host theme [command]",
+		"Configure config (-c) from HOST_CONFIG for host at host theme.",
+	} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("help output missing %q:\n%s", want, output.String())
+		}
 	}
 }

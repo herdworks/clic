@@ -1,6 +1,9 @@
 package clic
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+)
 
 // Option is a reusable option definition and its execution-local state.
 type Option struct {
@@ -13,6 +16,7 @@ type Option struct {
 type Options map[string]*Option
 
 // OptionMeta is host-controlled option presentation and resolution metadata.
+// Name defaults to the option's Spec.Key when it is empty.
 type OptionMeta struct {
 	Name        string
 	ShortName   string
@@ -23,6 +27,36 @@ type OptionMeta struct {
 	Hidden      bool
 	ShowDefault bool
 	Order       int
+}
+
+type environmentTemplateData struct {
+	EnvPrefix string
+}
+
+// Render expands Description templates with the supplied command metadata
+// context. Option spellings remain literal because clic uses them to validate
+// and resolve option values.
+func (meta OptionMeta) Render(data MetadataTemplateData) (OptionMeta, error) {
+	data.Name = meta.Name
+	data.ShortName = meta.ShortName
+	data.EnvName = meta.EnvName
+	description, err := renderTemplateString(meta.Description, data)
+	if err != nil {
+		return OptionMeta{}, fmt.Errorf("render option description: %w", err)
+	}
+	meta.Description = description
+	return meta, nil
+}
+
+// ResolveEnvName expands EnvName with its command's inherited environment
+// prefix. EnvName templates receive only .EnvPrefix.
+func (meta OptionMeta) ResolveEnvName(envPrefix string) (OptionMeta, error) {
+	envName, err := renderTemplateString(meta.EnvName, environmentTemplateData{EnvPrefix: envPrefix})
+	if err != nil {
+		return OptionMeta{}, fmt.Errorf("render option environment name: %w", err)
+	}
+	meta.EnvName = envName
+	return meta, nil
 }
 
 // OptionSpec is reusable option behavior.
@@ -42,6 +76,14 @@ const (
 	StringOption OptionKind = iota
 	BoolOption
 )
+
+// Name returns the option's presentation name, defaulting to its stable key.
+func (option Option) Name() string {
+	if option.Meta.Name != "" {
+		return option.Meta.Name
+	}
+	return option.Spec.Key
+}
 
 // StringValue returns a string option's execution-local value.
 func (option Option) StringValue() string { value, _ := option.State.Value.(string); return value }

@@ -11,7 +11,7 @@ type Arguments []string
 func parseArguments(execution *Execution, args Arguments) (Arguments, error) {
 	byName, byShort := map[string]*Option{}, map[string]*Option{}
 	for _, option := range execution.Options {
-		byName[option.Meta.Name] = option
+		byName[option.Name()] = option
 		if option.Meta.ShortName != "" {
 			byShort[option.Meta.ShortName] = option
 		}

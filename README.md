@@ -5,7 +5,7 @@
 `clic` composes reusable CLI trees without owning a process boundary.
 
 * A `CLI` is a command line program entrypoint with at least one `Command`
-* A `Command` is composed from `CommandMeta`, `CommandSpec`, `CommandState`, and optional subcommands
+* A `Command` is composed from `CommandMeta`, `CommandSpec`, `CommandState`, optional subcommands, and links
 * `CommandMeta` defines command metadata (name, description, usage, etc)
 * `CommandSpec` defines command options plus help, validation, and handler functions
 * An `Option` is composed from `OptionMeta`, `OptionSpec`, and `OptionState`
@@ -36,8 +36,60 @@ options, and user input before calling its handler or help. It returns a
 Commands that supply `Spec.Help` automatically accept `-h` and `--help`; the
 requested command's help callback runs instead of its validator or handler.
 
+## Presentation templates and remixing
+
+`CommandMeta.Description`, `CommandMeta.Usage`, and `OptionMeta.Description`
+are Go text templates. `DefaultHelp` supplies two values:
+
+* `.CLI` is the root command name, such as `hyperctl`.
+* `.Command` is the current command's full mounted path, such as
+  `hyperctl theme render`.
+* `.Name` is the literal name of the command or option being described.
+  Option descriptions additionally receive `.ShortName` and `.EnvName`.
+
+This lets a reusable command describe its own mounted invocation without a
+host rewriting usage strings:
+
+```go
+Usage: []string{"{{ .Command }} --theme theme.json --data page.json --layout default"},
+```
+
+Names, aliases, and option spellings remain literal because clic needs them
+before execution to validate and resolve the command tree. An empty
+`CommandMeta.Name` or `OptionMeta.Name` defaults to its corresponding
+specification key; set `Name` only when a host needs a different visible
+spelling.
+Custom help renderers can call `execution.MetadataTemplateData()` and
+`meta.Render(...)` themselves.
+
+`CommandMeta.EnvPrefix` scopes environment-name templates over a command tree.
+An empty child prefix inherits its nearest ancestor prefix; a non-empty child
+prefix overrides that value for its own declared options and descendants.
+`OptionMeta.EnvName` templates receive only `.EnvPrefix`, so a reusable option
+can declare `{{ .EnvPrefix }}CONFIG`. A prefix includes any delimiter it needs,
+such as `HYPER_`.
+
+Commands may also declare `Links`, which provide undocumented compatibility
+paths to a descendant command without mounting a duplicate command tree:
+
+```go
+Links: clic.Links{
+	{
+		From:   "build",
+		To: []string{"website", "build"},
+	},
+},
+```
+
+The link above makes `hyperctl build` execute the canonical `hyperctl website
+build` command. Link destinations use normal command names or aliases and must
+resolve to a descendant. A link cannot conflict with a mounted command name,
+key, or alias, and default help does not list links.
+
 See [`cmd/clippy`](./cmd/clippy) for a small executable example and
 [`hsync/cli`](../hsync/cli) for an importable downstream adapter.
+For agent guidance on implementing or remixing clic command trees, see the
+[`clic CLI` skill](./skills/clic-cli/SKILL.md).
 
 ## Example
 
@@ -133,7 +185,7 @@ func HelloMeta() clic.CommandMeta {
 	return clic.CommandMeta{
 		Name:        "hello",
 		Description: "Print a greeting.",
-		Usage:       []string{"example hello [--name name]"},
+		Usage:       []string{"{{ .Command }} [--name name]"},
 	}
 }
 

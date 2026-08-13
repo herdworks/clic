@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## Unreleased
 
+* **Added:** Go text-template rendering for `CommandMeta.Description`,
+  `CommandMeta.Usage`, and `OptionMeta.Description`. Templates receive `.CLI`
+  for the root command name and `.Command` for the command's full mounted path;
+  they also receive literal `.Name`, `.ShortName`, and `.EnvName` metadata as
+  appropriate to the rendered command or option.
+* **Added:** `Execution.CommandPath`, `RootCommandName`,
+  `CommandPathString`, and `MetadataTemplateData` for custom help renderers
+  that need the selected command's mounted path.
+* **Added:** Lexically inherited `CommandMeta.EnvPrefix` for resolving
+  `OptionMeta.EnvName` templates. Environment-name templates receive only
+  `.EnvPrefix`.
+* **Added:** Command-scoped `Links` for undocumented deep links to descendant
+  commands without remounting their command trees. Link destinations resolve
+  through mounted command names and aliases, while default help excludes links.
+* **Added:** A bundled generic `clic-cli` skill for implementing and remixing
+  clic command trees.
+* **Changed:** Empty `CommandMeta.Name` and `OptionMeta.Name` now default to
+  their corresponding specification keys for validation, parsing, help, and
+  execution metadata.
+
 ## v0.3.4 (2026-08-12)
 
 * Improve column whitespace in WriteList
