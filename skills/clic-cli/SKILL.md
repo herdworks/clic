@@ -24,6 +24,10 @@ Compose reusable command trees without putting process behavior in handlers.
 - Define a canonical `var CLI`.
 - Export fresh `Command()` or `Option()` factories only for reusable or
   remountable units.
+- Prefer a single factory for each complete `clic.Command` or `clic.Option`.
+  Do not split a one-off unit into separate `Meta()` and `Spec()` factories;
+  extract either only when it is independently reused or is a meaningful shared
+  unit.
 - Put substantial leaf commands and their tests in separate files.
 - Keep reusable behavior in `Spec` and host-facing presentation in `Meta`.
 - Keep parsed values only in execution-local `State`.

@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## Unreleased
 
+* Updated skill guidance on composable command/option factories. 
+
 ## v0.4.0 (2026-08-13)
 
 * **Added:** Go text-template rendering for `CommandMeta.Description`,
