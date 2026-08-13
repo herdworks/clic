@@ -21,7 +21,7 @@ func TestWriteListColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "Name      Description\n----      -----------\none       First.\nlong-name Second.\n"
+	want := "Name       Description\n----       -----------\none        First.\nlong-name  Second.\n"
 	if got := output.String(); got != want {
 		t.Fatalf("WriteList() = %q, want %q", got, want)
 	}
@@ -50,7 +50,7 @@ func TestWriteListEmpty(t *testing.T) {
 		format Format
 		want   string
 	}{
-		{name: "columns", format: ColumnarFormat, want: "Name Description\n---- -----------\n"},
+		{name: "columns", format: ColumnarFormat, want: "Name  Description\n----  -----------\n"},
 		{name: "json", format: JSONFormat, want: "[]\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

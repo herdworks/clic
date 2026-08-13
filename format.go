@@ -34,6 +34,8 @@ const (
 	ColumnarFormat Format = "columns"
 	// JSONFormat writes a JSON array of string-valued records.
 	JSONFormat Format = "json"
+
+	columnSeparator = "  "
 )
 
 // WriteList writes rows in the requested format using the supplied fields.
@@ -92,7 +94,7 @@ func writeColumnarList(writer io.Writer, fields []Field, values FieldValues) err
 	}
 	for index, field := range fields {
 		if index > 0 {
-			if _, err := io.WriteString(writer, " "); err != nil {
+			if _, err := io.WriteString(writer, columnSeparator); err != nil {
 				return err
 			}
 		}
@@ -105,7 +107,7 @@ func writeColumnarList(writer io.Writer, fields []Field, values FieldValues) err
 	}
 	for index, field := range fields {
 		if index > 0 {
-			if _, err := io.WriteString(writer, " "); err != nil {
+			if _, err := io.WriteString(writer, columnSeparator); err != nil {
 				return err
 			}
 		}
@@ -119,7 +121,7 @@ func writeColumnarList(writer io.Writer, fields []Field, values FieldValues) err
 	for row := range values[0] {
 		for column := range fields {
 			if column > 0 {
-				if _, err := io.WriteString(writer, " "); err != nil {
+				if _, err := io.WriteString(writer, columnSeparator); err != nil {
 					return err
 				}
 			}

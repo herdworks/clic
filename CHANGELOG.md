@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## Unreleased
 
+* Improve column whitespace in WriteList
+
 ## v0.3.3 (2026-08-12)
 
 * Updated default help output "OPTIONS" header
