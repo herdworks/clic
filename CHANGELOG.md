@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## Unreleased
 
+## v0.4.0 (2026-08-13)
+
 * **Added:** Go text-template rendering for `CommandMeta.Description`,
   `CommandMeta.Usage`, and `OptionMeta.Description`. Templates receive `.CLI`
   for the root command name and `.Command` for the command's full mounted path;
