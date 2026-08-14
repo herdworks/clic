@@ -3,6 +3,7 @@ package clic
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // Option is a reusable option definition and its execution-local state.
@@ -61,9 +62,10 @@ func (meta OptionMeta) ResolveEnvName(envPrefix string) (OptionMeta, error) {
 
 // OptionSpec is reusable option behavior.
 type OptionSpec struct {
-	Key      string
-	Kind     OptionKind
-	Required bool
+	Key       string
+	Kind      OptionKind
+	Separator string
+	Required  bool
 }
 
 // OptionState is execution-local parsed option state.
@@ -75,6 +77,7 @@ type OptionKind uint8
 const (
 	StringOption OptionKind = iota
 	BoolOption
+	StringsOption
 )
 
 // Name returns the option's presentation name, defaulting to its stable key.
@@ -91,6 +94,30 @@ func (option Option) StringValue() string { value, _ := option.State.Value.(stri
 // BoolValue returns a boolean option's execution-local value.
 func (option Option) BoolValue() bool { value, _ := option.State.Value.(bool); return value }
 
+// StringSliceValue returns a string-slice option's execution-local value.
+func (option Option) StringSliceValue() []string {
+	value, _ := option.State.Value.([]string)
+	return value
+}
+
+// StringValue returns an effective string option value by its stable key.
+func (options Options) StringValue(key string) string {
+	option := options[key]
+	if option == nil {
+		return ""
+	}
+	return option.StringValue()
+}
+
+// BoolValue returns an effective boolean option value by its stable key.
+func (options Options) BoolValue(key string) bool {
+	option := options[key]
+	if option == nil {
+		return false
+	}
+	return option.BoolValue()
+}
+
 // Sorted returns options in presentation order.
 func (options Options) Sorted() []*Option {
 	result := make([]*Option, 0, len(options))
@@ -103,6 +130,32 @@ func (options Options) Sorted() []*Option {
 		}
 		return result[i].Spec.Key < result[j].Spec.Key
 	})
+	return result
+}
+
+// StringValues returns an effective strings option value by its stable key.
+func (options Options) StringValues(key string) []string {
+	option := options[key]
+	if option == nil {
+		return nil
+	}
+	return option.StringSliceValue()
+}
+
+func (option Option) separator() string {
+	if option.Spec.Separator == "" {
+		return ","
+	}
+	return option.Spec.Separator
+}
+
+func normalizeStringSlice(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			result = append(result, value)
+		}
+	}
 	return result
 }
 

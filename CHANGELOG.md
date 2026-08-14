@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## Unreleased
 
+* Added configurable `StringsOption` values with whitespace-tolerant delimited
+  CLI and environment parsing, native string-list defaults, and required-list
+  validation.
+* Added typed `Options` value getters and separator-aware list default help.
+
 ## v0.4.1 (2026-08-13)
 
 * Updated skill guidance on composable command/option factories. 

@@ -188,7 +188,7 @@ func validateOptions(options Options, commandKey string) error {
 		if option.Spec.Key == "" {
 			return fmt.Errorf("option key is required")
 		}
-		if option.Spec.Kind != StringOption && option.Spec.Kind != BoolOption {
+		if option.Spec.Kind != StringOption && option.Spec.Kind != BoolOption && option.Spec.Kind != StringsOption {
 			return fmt.Errorf("option %q has unsupported kind", option.Spec.Key)
 		}
 		if option.Spec.Required && option.Spec.Kind == BoolOption {
@@ -232,6 +232,9 @@ func defaultMatches(kind OptionKind, value any) bool {
 		return ok
 	case BoolOption:
 		_, ok := value.(bool)
+		return ok
+	case StringsOption:
+		_, ok := value.([]string)
 		return ok
 	default:
 		return false
@@ -334,11 +337,17 @@ func resolveOptionValues(options Options, execution *Execution) error {
 				}
 			}
 			if option.State.Value == nil && option.Meta.Default != nil {
-				option.State.Value = option.Meta.Default
+				if option.Spec.Kind == StringsOption {
+					option.State.Value = normalizeStringSlice(option.Meta.Default.([]string))
+				} else {
+					option.State.Value = option.Meta.Default
+				}
 			}
 			if option.State.Value == nil {
 				if option.Spec.Kind == BoolOption {
 					option.State.Value = false
+				} else if option.Spec.Kind == StringsOption {
+					option.State.Value = []string{}
 				} else {
 					option.State.Value = ""
 				}
@@ -350,8 +359,13 @@ func resolveOptionValues(options Options, execution *Execution) error {
 
 func validateRequiredOptions(options Options) error {
 	for _, option := range options {
-		if option.Spec.Required && option.StringValue() == "" {
-			return fmt.Errorf("option --%s is required", option.Name())
+		if option.Spec.Required {
+			if option.Spec.Kind == StringsOption && len(option.StringSliceValue()) == 0 {
+				return fmt.Errorf("option --%s is required", option.Name())
+			}
+			if option.Spec.Kind != StringsOption && option.StringValue() == "" {
+				return fmt.Errorf("option --%s is required", option.Name())
+			}
 		}
 	}
 	return nil
@@ -360,6 +374,9 @@ func validateRequiredOptions(options Options) error {
 func parseOptionValue(option *Option, value string) (any, error) {
 	if option.Spec.Kind == StringOption {
 		return value, nil
+	}
+	if option.Spec.Kind == StringsOption {
+		return normalizeStringSlice(strings.Split(value, option.separator())), nil
 	}
 	parsed, err := strconv.ParseBool(value)
 	if err != nil {

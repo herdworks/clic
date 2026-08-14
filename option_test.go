@@ -48,6 +48,38 @@ func TestOptionNameDefaultsToSpecKey(t *testing.T) {
 	}
 }
 
+func TestOptionsValueGetters(t *testing.T) {
+	options := Options{
+		"string": {State: OptionState{Value: "value"}},
+		"bool":   {State: OptionState{Value: true}},
+		"slice":  {State: OptionState{Value: []string{"one", "two"}}},
+	}
+	if got := options.StringValue("string"); got != "value" {
+		t.Fatalf("StringValue() = %q, want value", got)
+	}
+	if !options.BoolValue("bool") {
+		t.Fatal("BoolValue() = false, want true")
+	}
+	if got, want := options.StringValues("slice"), []string{"one", "two"}; !sameStrings(got, want) {
+		t.Fatalf("StringValues() = %q, want %q", got, want)
+	}
+	for _, key := range []string{"missing", "bool", "slice"} {
+		if got := options.StringValue(key); got != "" {
+			t.Errorf("StringValue(%q) = %q, want empty", key, got)
+		}
+	}
+	for _, key := range []string{"missing", "string", "slice"} {
+		if options.BoolValue(key) {
+			t.Errorf("BoolValue(%q) = true, want false", key)
+		}
+	}
+	for _, key := range []string{"missing", "string", "bool"} {
+		if got := options.StringValues(key); got != nil {
+			t.Errorf("StringValues(%q) = %q, want nil", key, got)
+		}
+	}
+}
+
 func TestValidateEffectiveOptionCollisions(t *testing.T) {
 	tests := []struct {
 		name string
@@ -115,6 +147,77 @@ func TestRunResolvesOptionValuesInPrecedenceOrder(t *testing.T) {
 	}
 	if got, want := values, []string{"default::false", "environment::true", "::false", "::true"}; !sameStrings(got, want) {
 		t.Fatalf("values = %q, want %q", got, want)
+	}
+}
+
+func TestRunResolvesStringsOptions(t *testing.T) {
+	var values [][]string
+	cli := commandCLI(Options{
+		"tags": {
+			Meta: OptionMeta{Name: "tag", ShortName: "t", EnvName: "TAGS", Default: []string{" default ", "", "tag"}},
+			Spec: OptionSpec{Key: "tags", Kind: StringsOption},
+		},
+		"paths": {
+			Meta: OptionMeta{Name: "path", EnvName: "PATHS"},
+			Spec: OptionSpec{Key: "paths", Kind: StringsOption, Separator: "::"},
+		},
+	}, func(execution *Execution) error {
+		values = append(values, execution.Options.StringValues("tags"), execution.Options.StringValues("paths"))
+		return nil
+	})
+	for _, test := range []struct {
+		environment map[string]string
+		args        Arguments
+		wantTags    []string
+		wantPaths   []string
+	}{
+		{nil, nil, []string{"default", "tag"}, []string{}},
+		{map[string]string{"TAGS": " environment ,, tag ", "PATHS": " one ::  :: two "}, nil, []string{"environment", "tag"}, []string{"one", "two"}},
+		{map[string]string{"TAGS": "environment", "PATHS": "environment"}, Arguments{"-t", " explicit , , tag ", "--path=one::two"}, []string{"explicit", "tag"}, []string{"one", "two"}},
+		{map[string]string{"TAGS": "environment", "PATHS": "environment"}, Arguments{"--tag= , ", "--path=  "}, []string{}, []string{}},
+	} {
+		if result := cli.Run(testExecution(test.environment), test.args); result != (Result{}) {
+			t.Fatalf("Run(%q) = %#v", test.args, result)
+		}
+		gotTags, gotPaths := values[len(values)-2], values[len(values)-1]
+		if !sameStrings(gotTags, test.wantTags) || !sameStrings(gotPaths, test.wantPaths) {
+			t.Fatalf("Run(%q) values = %q, %q; want %q, %q", test.args, gotTags, gotPaths, test.wantTags, test.wantPaths)
+		}
+	}
+	if result := cli.Run(testExecution(nil), Arguments{"--tag=one", "--tag=two"}); result.ExitCode != 1 {
+		t.Fatalf("repeated list option = %#v", result)
+	}
+	if source := cli.Spec.Options["tags"].Meta.Default; !sameStrings(source.([]string), []string{" default ", "", "tag"}) {
+		t.Fatalf("source default = %q", source)
+	}
+}
+
+func TestRunValidatesRequiredStringsOptions(t *testing.T) {
+	cli := commandCLI(Options{
+		"tags": {Meta: OptionMeta{Name: "tag"}, Spec: OptionSpec{Key: "tags", Kind: StringsOption, Required: true}},
+	}, func(*Execution) error { return nil })
+	for _, args := range []Arguments{nil, {"--tag= , "}} {
+		if result := cli.Run(testExecution(nil), args); result.ExitCode != 1 {
+			t.Errorf("Run(%q) = %#v, want required-option error", args, result)
+		}
+	}
+	if result := cli.Run(testExecution(nil), Arguments{"--tag=one"}); result != (Result{}) {
+		t.Fatalf("Run(nonempty list) = %#v", result)
+	}
+}
+
+func TestValidateStringsDefaults(t *testing.T) {
+	valid := commandCLI(Options{
+		"tags": {Meta: OptionMeta{Name: "tag", Default: []string{}}, Spec: OptionSpec{Key: "tags", Kind: StringsOption}},
+	}, func(*Execution) error { return nil })
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("Validate() = %v", err)
+	}
+	invalid := commandCLI(Options{
+		"tags": {Meta: OptionMeta{Name: "tag", Default: "one,two"}, Spec: OptionSpec{Key: "tags", Kind: StringsOption}},
+	}, func(*Execution) error { return nil })
+	if err := invalid.Validate(); err == nil {
+		t.Fatal("Validate() succeeded for invalid string-slice default")
 	}
 }
 

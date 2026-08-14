@@ -36,6 +36,25 @@ options, and user input before calling its handler or help. It returns a
 Commands that supply `Spec.Help` automatically accept `-h` and `--help`; the
 requested command's help callback runs instead of its validator or handler.
 
+## Option values
+
+`StringOption` and `BoolOption` provide scalar values. `StringsOption`
+accepts one delimited value from the command line or its environment variable:
+
+```sh
+tool --tag "one, two ,, three"
+```
+
+It uses a comma by default; set `OptionSpec.Separator` to use another literal
+delimiter. Parsed values are trimmed and empty values are omitted, so the
+example resolves to `[]string{"one", "two", "three"}`. Separators are not
+escapable. String-slice defaults use native `[]string` values and receive the
+same trimming and empty-value normalization.
+
+Handlers can read effective values with `execution.Options.StringValue(key)`,
+`BoolValue(key)`, and `StringValues(key)`. Each returns its zero value for
+an absent key or a value of another kind.
+
 ## Presentation templates and remixing
 
 `CommandMeta.Description`, `CommandMeta.Usage`, and `OptionMeta.Description`

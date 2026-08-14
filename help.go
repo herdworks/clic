@@ -170,8 +170,15 @@ func optionDescription(option Option) string {
 	if option.Meta.EnvName != "" {
 		description += " (env: " + option.Meta.EnvName + ")"
 	}
-	if option.Meta.ShowDefault && option.State.Value != nil && fmt.Sprint(option.State.Value) != "" {
-		description += fmt.Sprintf(" (default: %v)", option.State.Value)
+	if option.Meta.ShowDefault && option.State.Value != nil && optionValueString(option) != "" {
+		description += fmt.Sprintf(" (default: %s)", optionValueString(option))
 	}
 	return description
+}
+
+func optionValueString(option Option) string {
+	if option.Spec.Kind == StringsOption {
+		return strings.Join(option.StringSliceValue(), option.separator())
+	}
+	return fmt.Sprint(option.State.Value)
 }

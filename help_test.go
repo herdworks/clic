@@ -122,6 +122,23 @@ func TestDefaultHelpShowsNonEmptyEffectiveOptionValues(t *testing.T) {
 	}
 }
 
+func TestDefaultHelpShowsStringsValuesWithSeparator(t *testing.T) {
+	output := &bytes.Buffer{}
+	execution := &Execution{
+		Stdout:  output,
+		Command: &Command{Meta: CommandMeta{Name: "tool"}},
+		Options: Options{
+			"tags": {Meta: OptionMeta{Name: "tag", ShowDefault: true}, Spec: OptionSpec{Key: "tags", Kind: StringsOption, Separator: "::"}, State: OptionState{Value: []string{"one", "two"}}},
+		},
+	}
+	if err := DefaultHelp(CommandMeta{Name: "tool"}, execution); err != nil {
+		t.Fatalf("DefaultHelp() = %v", err)
+	}
+	if !strings.Contains(output.String(), "(default: one::two)") {
+		t.Fatalf("help output = %q", output.String())
+	}
+}
+
 func TestDefaultHelpUsesDefaultOptionNameInTemplates(t *testing.T) {
 	output := &bytes.Buffer{}
 	execution := &Execution{

@@ -55,7 +55,11 @@ func parseArguments(execution *Execution, args Arguments) (Arguments, error) {
 			index++
 			value = args[index]
 		}
-		option.State.Value = value
+		parsed, err := parseOptionValue(option, value)
+		if err != nil {
+			return nil, err
+		}
+		option.State.Value = parsed
 	}
 	return arguments, nil
 }
