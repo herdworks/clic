@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## Unreleased
 
+## v0.4.3 (2026-08-21)
+
 * Added `MustCommands` for composing already-constructed commands while
   rejecting empty and duplicate command keys.
 
