@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## Unreleased
 
+* Added `MustCommands` for composing already-constructed commands while
+  rejecting empty and duplicate command keys.
+
 ## v0.4.2 (2026-08-13)
 
 * Added configurable `StringsOption` values with whitespace-tolerant delimited

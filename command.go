@@ -183,19 +183,28 @@ func (commands Commands) Sorted() []*Command {
 	return result
 }
 
-// MustCommandsFrom composes commands returned from factories. It panics if a
-// factory returns an empty key or a key already produced by another factory.
-func MustCommandsFrom(factories ...func() Command) Commands {
-	commands := make(Commands, len(factories))
-	for _, factory := range factories {
-		command := factory()
+// MustCommands composes commands by their stable keys. It panics if a command
+// has an empty key or another supplied command uses the same key.
+func MustCommands(values ...Command) Commands {
+	commands := make(Commands, len(values))
+	for _, command := range values {
 		if command.Spec.Key == "" {
-			panic("clic command factory returned an empty key")
+			panic("clic command has an empty key")
 		}
 		if _, exists := commands[command.Spec.Key]; exists {
-			panic("clic command factories returned duplicate key " + command.Spec.Key)
+			panic("clic commands have duplicate key " + command.Spec.Key)
 		}
 		commands[command.Spec.Key] = &command
 	}
 	return commands
+}
+
+// MustCommandsFrom composes commands returned from factories. It panics if a
+// factory returns an empty key or a key already produced by another factory.
+func MustCommandsFrom(factories ...func() Command) Commands {
+	values := make([]Command, len(factories))
+	for index, factory := range factories {
+		values[index] = factory()
+	}
+	return MustCommands(values...)
 }

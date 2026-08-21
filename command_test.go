@@ -18,6 +18,20 @@ func TestMustCommandsFrom(t *testing.T) {
 	mustPanic(t, func() { MustCommandsFrom(func() Command { return Command{} }) })
 }
 
+func TestMustCommands(t *testing.T) {
+	commands := MustCommands(Command{Meta: CommandMeta{Name: "run"}, Spec: CommandSpec{Key: "run"}})
+	if command := commands["run"]; command == nil || command.Spec.Key != "run" {
+		t.Fatalf("MustCommands() = %#v", commands)
+	}
+	mustPanic(t, func() {
+		MustCommands(
+			Command{Spec: CommandSpec{Key: "same"}},
+			Command{Spec: CommandSpec{Key: "same"}},
+		)
+	})
+	mustPanic(t, func() { MustCommands(Command{}) })
+}
+
 func TestCommandPositionalArguments(t *testing.T) {
 	command := &Command{State: CommandState{Arguments: Arguments{"one", "two"}}}
 	if got := command.PositionalArguments(); got != 2 {

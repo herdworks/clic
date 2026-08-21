@@ -30,6 +30,26 @@ type OptionMeta struct {
 	Order       int
 }
 
+// OptionSpec is reusable option behavior.
+type OptionSpec struct {
+	Key       string
+	Kind      OptionKind
+	Separator string
+	Required  bool
+}
+
+// OptionState is execution-local parsed option state.
+type OptionState struct{ Value any }
+
+// OptionKind identifies an option value type.
+type OptionKind uint8
+
+const (
+	StringOption OptionKind = iota
+	BoolOption
+	StringsOption
+)
+
 type environmentTemplateData struct {
 	EnvPrefix string
 }
@@ -59,26 +79,6 @@ func (meta OptionMeta) ResolveEnvName(envPrefix string) (OptionMeta, error) {
 	meta.EnvName = envName
 	return meta, nil
 }
-
-// OptionSpec is reusable option behavior.
-type OptionSpec struct {
-	Key       string
-	Kind      OptionKind
-	Separator string
-	Required  bool
-}
-
-// OptionState is execution-local parsed option state.
-type OptionState struct{ Value any }
-
-// OptionKind identifies an option value type.
-type OptionKind uint8
-
-const (
-	StringOption OptionKind = iota
-	BoolOption
-	StringsOption
-)
 
 // Name returns the option's presentation name, defaulting to its stable key.
 func (option Option) Name() string {
