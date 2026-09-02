@@ -39,7 +39,20 @@ type OptionSpec struct {
 }
 
 // OptionState is execution-local parsed option state.
-type OptionState struct{ Value any }
+type OptionState struct {
+	Value  any
+	Source OptionSource
+}
+
+// OptionSource identifies where an option's effective value came from.
+type OptionSource uint8
+
+const (
+	OptionSourceUnset OptionSource = iota
+	OptionSourceDefault
+	OptionSourceEnvironment
+	OptionSourceArgument
+)
 
 // OptionKind identifies an option value type.
 type OptionKind uint8

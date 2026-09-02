@@ -246,29 +246,34 @@ func (cli CLI) resolveCommand(args Arguments) (*Command, Options, []string, Argu
 	ancestors := []*Command{}
 	commandPath := []string{selected.Name()}
 	args = append(Arguments(nil), args...)
-	for len(args) > 0 && args[0] != "--" && !strings.HasPrefix(args[0], "-") {
-		child, ok := selected.SubCommand(args[0])
-		if ok {
-			ancestors = append(ancestors, selected)
-			selected = child
-			commandPath = append(commandPath, selected.Name())
-			args = args[1:]
-			continue
-		}
-		link, ok := selected.Link(args[0])
-		if !ok {
+	for {
+		commands := append(append([]*Command(nil), ancestors...), selected)
+		index, found := subcommandIndex(commands, args)
+		if !found {
 			break
 		}
-		for _, name := range link.To {
-			child, ok := selected.SubCommand(name)
+		name := args[index]
+		child, ok := selected.SubCommand(name)
+		if !ok {
+			link, ok := selected.Link(name)
 			if !ok {
-				return nil, nil, nil, nil, fmt.Errorf("command %q link from %q targets unknown command %q", selected.Spec.Key, link.From, name)
+				break
 			}
+			for _, linkedName := range link.To {
+				child, ok = selected.SubCommand(linkedName)
+				if !ok {
+					return nil, nil, nil, nil, fmt.Errorf("command %q link from %q targets unknown command %q", selected.Spec.Key, link.From, linkedName)
+				}
+				ancestors = append(ancestors, selected)
+				selected = child
+				commandPath = append(commandPath, selected.Name())
+			}
+		} else {
 			ancestors = append(ancestors, selected)
 			selected = child
 			commandPath = append(commandPath, selected.Name())
 		}
-		args = args[1:]
+		args = append(args[:index], args[index+1:]...)
 	}
 	command := *selected
 	command.Meta.Name = selected.Name()
@@ -297,6 +302,54 @@ func (cli CLI) resolveCommand(args Arguments) (*Command, Options, []string, Argu
 		effective["help"] = helpOption()
 	}
 	return &command, effective, commandPath, args, nil
+}
+
+func subcommandIndex(commands []*Command, args Arguments) (index int, found bool) {
+	command := commands[len(commands)-1]
+	for index = 0; index < len(args); index++ {
+		token := args[index]
+		if token == "--" {
+			return 0, false
+		}
+		if strings.HasPrefix(token, "-") && token != "-" {
+			option := globalOption(commands, token)
+			if option == nil {
+				return 0, false
+			}
+			if option.Spec.Kind != BoolOption && !strings.Contains(token, "=") {
+				index++
+			}
+			continue
+		}
+		if _, ok := command.SubCommand(token); ok {
+			return index, true
+		}
+		if _, ok := command.Link(token); ok {
+			return index, true
+		}
+		return 0, false
+	}
+	return 0, false
+}
+
+func globalOption(commands []*Command, token string) *Option {
+	prefix := "-"
+	if strings.HasPrefix(token, "--") {
+		prefix = "--"
+	}
+	name := strings.TrimPrefix(token, prefix)
+	name, _, _ = strings.Cut(name, "=")
+	for _, command := range commands {
+		for _, option := range command.Spec.Options {
+			if !option.Meta.Global {
+				continue
+			}
+			if name == option.Name() || name == option.Meta.ShortName {
+				return option
+			}
+		}
+	}
+	return nil
 }
 
 func copyOptions(options Options) Options {
@@ -334,6 +387,7 @@ func resolveOptionValues(options Options, execution *Execution) error {
 						return err
 					}
 					option.State.Value = parsed
+					option.State.Source = OptionSourceEnvironment
 				}
 			}
 			if option.State.Value == nil && option.Meta.Default != nil {
@@ -342,6 +396,7 @@ func resolveOptionValues(options Options, execution *Execution) error {
 				} else {
 					option.State.Value = option.Meta.Default
 				}
+				option.State.Source = OptionSourceDefault
 			}
 			if option.State.Value == nil {
 				if option.Spec.Kind == BoolOption {

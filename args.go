@@ -46,6 +46,7 @@ func parseArguments(execution *Execution, args Arguments) (Arguments, error) {
 				return nil, fmt.Errorf("boolean option %q does not accept a value", name)
 			}
 			option.State.Value = true
+			option.State.Source = OptionSourceArgument
 			continue
 		}
 		if !hasValue {
@@ -60,6 +61,7 @@ func parseArguments(execution *Execution, args Arguments) (Arguments, error) {
 			return nil, err
 		}
 		option.State.Value = parsed
+		option.State.Source = OptionSourceArgument
 	}
 	return arguments, nil
 }

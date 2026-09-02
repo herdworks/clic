@@ -59,6 +59,29 @@ func TestRunResolvesCommandsOptionsAndKeepsStateLocal(t *testing.T) {
 	}
 }
 
+func TestRunResolvesGlobalOptionBeforeSubcommand(t *testing.T) {
+	var value string
+	cli := CLI{Command: Command{
+		Meta: CommandMeta{Name: "tool"},
+		Spec: CommandSpec{Key: "tool", Options: Options{
+			"config": {Meta: OptionMeta{Name: "config", Global: true}, Spec: OptionSpec{Key: "config", Kind: StringOption}},
+		}},
+		Commands: Commands{"init": {
+			Meta: CommandMeta{Name: "init"},
+			Spec: CommandSpec{Key: "init", Handler: func(execution *Execution) error {
+				value = execution.Options.StringValue("config")
+				return nil
+			}},
+		}},
+	}}
+	if result := cli.Run(testExecution(nil), Arguments{"--config", "settings.json", "init"}); result.Error != nil {
+		t.Fatalf("Run() = %#v", result)
+	}
+	if value != "settings.json" {
+		t.Fatalf("config = %q, want settings.json", value)
+	}
+}
+
 func TestCommandNameDefaultsToSpecKey(t *testing.T) {
 	var name, path string
 	cli := CLI{
