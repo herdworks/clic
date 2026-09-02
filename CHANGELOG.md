@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## Unreleased
 
+## v0.4.4 (2026-09-02)
+
 * Added `OptionState.Source` to identify whether an effective option value was
   supplied by a default, environment variable, or command-line argument.
 * Changed command resolution to recognize global options before subcommands,
